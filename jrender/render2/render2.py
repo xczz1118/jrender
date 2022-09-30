@@ -29,7 +29,7 @@ class Render():
                  camera_mode='look',
                  K=None, R=None, t=None, dist_coeffs=None, orig_size=512,
                  perspective=True, viewing_angle=30, viewing_scale=1.0,
-                 eye=None, camera_direction=[0, 0, 1], threshold=1e-5, up=[0, 1, 0], MSAA=False
+                 eye=None, camera_direction=[0, 0, 1], threshold=1e-2, up=[0, 1, 0], MSAA=False
                  ):
 
         self.transform = Transform(camera_mode,
@@ -181,6 +181,7 @@ class Render():
 
             H = jt.normalize(V + L, dim=2)
             cosine = nn.relu(jt.sum(L * N, dim=2)).unsqueeze(2)
+            #compute light_visibility
             shading = self.light_visibility(light)
 
             # blinn_phong shading
@@ -216,7 +217,6 @@ class Render():
                 color += diffuse * textures + specular * jt.ones_like(textures)
 
         color = self.SSSR(color)
-        #color = self.SSAO(color)
 
         color = jt.clamp(color, 0, 1)
 
@@ -256,9 +256,6 @@ class Render():
             shading = shading.float32()
             filter_w = jt.ones([7, 7], "float32")/49
             shading = conv_for_image(shading, filter_w, 1)
-            # imsave("D:\Render\jrender\data\\results\\temp\\worldcoords.jpg",jt.clamp((worldcoords+1)/2,0,1))
-            #imsave("D:\Render\jrender\data\\results\\temp\\shading.jpg", jt.clamp(eyeDepth - LightDepth, 0, 1))
-            # exit()
 
         elif light.type == "area":      # to do
             proj_to_light_v = self.vp_transform(
@@ -267,23 +264,10 @@ class Render():
             DepthMapUV = jt.stack([(proj_to_light_v[:, :, 0]+1.)/2, 1-(proj_to_light_v[:, :, 1]+1.)/2], dim=2)
             light.DepthMap.uv = DepthMapUV
             DepthMap = light.DepthMap.image
-            #LightDepth = light.DepthMap.query_uv
-            #LightDepth[LightDepth > self.far] = 0
-            #LightDepth[LightDepth < self.near] = 0
-            # imsave("D:\Render\jrender\data\\results\\temp\\lightDepth.jpg",LightDepth)
             # VSSM
-            #eyeDepth[eyeDepth > self.far] = 0
-            #eyeDepth[eyeDepth < self.near] = 0
-            # imsave("D:\Render\jrender\data\\results\\temp\\eyeDepth.jpg",eyeDepth)
             SAT = Texture.generate_SAT(DepthMap)
             SAT2 = Texture.generate_SAT(DepthMap * DepthMap)
             shading = VSSM_cuda(eyeDepth, SAT, SAT2, DepthMapUV, light)
-            #shading = VSSM_cuda(eyeDepth, mipmap, mipmap2, index, DepthMapUV, light)
-            #shading = jt.clamp(shading,0,1)
-            #shading[shading > 50] = 0
-            shading[shading < self.near] = 0
-            imsave("D:\Render\jrender\data\\results\\temp\\shading.jpg", shading)
-            shading = shading.unsqueeze(2)
 
         return shading
 
@@ -298,8 +282,6 @@ class Render():
                                               camera_direction=direction, viewing_angle=viewing_angle, camera_mode="look", perspective=True, up=light.up)
             self.Rasterize(proj_vertices, proj_vertices, fill_back=light.fillback)
             DM = self.rasterize.save_vars[4][:, 0, :, :].squeeze(0)
-            DM[DM > light.far] = 0
-            imsave("D:\Render\jrender\data\\results\\temp\\shadow_map.jpg", DM)
             return DM
 
         elif light.type == "directional":
@@ -310,8 +292,6 @@ class Render():
                                               camera_direction=direction, viewing_scale=viewing_scale, camera_mode="look", perspective=False, up=light.up)
             DM = self.Rasterize(proj_vertices, proj_vertices, fill_back=light.fillback)[:, :, 2]
             return DM
-            #temp = self.Rasterize(proj_vertices, proj_vertices)[:, :, 2]
-            #imsave("D:\Render\jrender\data\\results\\temp\\shadow_map.jpg", temp[:,::-1])
 
         return None
 
@@ -341,11 +321,8 @@ class Render():
             self._normal_buffer = self.Rasterize(
                 self.proj_vertices, face_normals)
             aggrs_info = self.rasterize.save_vars[4]
-            #alpha = aggrs_info[:, 1, :, :].squeeze(0) == -1
             z = aggrs_info[:, 0, :, :].squeeze(0)
             self._faces_ind_buffer = aggrs_info[:, 1, :, :].squeeze(0).int32()
-            #z[alpha] = 0
-            #imsave("D:\Render\jrender\data\\results\\temp\\normal_buffer.jpg", (self._normal_buffer))
             image_size = self.rasterize.image_size
             x = jt.repeat((2*jt.arange(0, image_size)+1)/image_size-1, [image_size, 1])
             y = x[::, ::-1].transpose()
@@ -463,15 +440,7 @@ class Render():
                      faces_ind_buffer, ssr_faces, width, self.far, step=1, level_intersect=0, spp=64)
         time2 = time.time()
         print(time2 - time1)
-        #reflect = jt.clamp(reflect,0,1).numpy() * 255
-        #reflect = numpy.uint8(reflect)
-        #reflect = cv2.bilateralFilter(reflect,d=20,sigmaColor=150,sigmaSpace=75)
-        #reflect = jt.array(reflect)/255.
         color = color + reflect
-        imsave("D:\Render\jrender\data\\results\\temp\\reflect.bmp", reflect)
-        imsave("D:\Render\jrender\data\\results\\temp\\sssr.bmp", color)
-        imsave("D:\Render\jrender\data\\results\\output_render\\SSSR.jpg", color[:,::-1,:])
-        #imsave("D:\Render\jrender\data\\results\\temp\\sssr_bl.bmp", out_reflect)
         return color
         
 
@@ -481,7 +450,6 @@ class Render():
         faces_ind_buffer = self.faces_ind_buffer
         width = math.tan(self.viewing_angle/180.*math.pi)
         occlusion = SSAO_cuda(depth, faces_ind_buffer, normal_buffer, width, sample_num=64, sample_range_r=0.1)
-        #imsave("D:\Render\jrender\data\\results\\temp\\rand.jpg", occlusion)
         filter_w = jt.ones([5, 5], "float32")/25
         occlusion = conv_for_image(occlusion, filter_w, 0)
         color *= (1 - occlusion).unsqueeze(2)
@@ -493,5 +461,4 @@ class Render():
         faces_ind_buffer = self.faces_ind_buffer
         width = math.tan(self.viewing_angle/180.*math.pi)
         color = SSDO_cuda(color, depth, faces_ind_buffer, normal_buffer, width, sample_num=1024, sample_range_r=0.3)
-        #imsave("D:\Render\jrender\data\\results\\temp\\rand.jpg", color)
         return color

@@ -68,7 +68,7 @@ class obj():
             elif self.Generate_Normals == "normal_texture":
                 normals = self.normal_textures.query_uv
                 TBN = create_TBN(self._kd_texture_uv, self.face_vertices)
-                self._face_normals = jt.matmul(normals.unsqueeze(2), TBN.unsqueeze()).squeeze(2)
+                self._face_normals = jt.matmul(normals.unsqueeze(2), TBN).squeeze(2)
             elif self.Generate_Normals == "from_obj":
                 self._face_normals = self.face_normals_from_obj
             self.face_normals_update = False
@@ -147,8 +147,7 @@ class obj():
         else:
             return jt.ones_like(self.face_vertices) * jt.array(self._Kd).float32()
 
-    def set_vertices(self, transform):  # 未考虑非等比缩放   model_transform
+    def set_vertices(self, transform):  
         self._face_vertices = transform(self._face_vertices)
-        self._face_normals = transform(self._face_normals)
 
 

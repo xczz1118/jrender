@@ -505,7 +505,7 @@ __global__ void draw_grid(scalar_t* image, int is, int interval) {
         states
     );
     
-    cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();
     //draw_grid<float32><<<blocks,threads>>>(image_p,is,256);
 
     cudaError_t err = cudaGetLastError();

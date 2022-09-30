@@ -5,7 +5,7 @@ import numpy as np
 import numba
 import math
 from .utils.sample2D import sample2D
-from skimage.io import imread,imsave
+from skimage.io import imread
 from PIL import Image
 
 
@@ -92,9 +92,6 @@ class Texture():  #image:[height,width,(channels)]  uv:[...,2]
             trans = transform.Compose([transform.Resize((height,width),Image.BILINEAR),transform.ToTensor()])
             image = trans(image)
             image = jt.array(image).squeeze(0)
-            #image[image > 100] = 0
-            #image[image < 0.1] = 0
-            #imsave("D:\Render\jrender\data\\results\\temp\\mipmap.jpg",image) 
             mipmap = jt.concat([mipmap,image.reshape((1,width * height))], dim = 1)
             index.append(index[level + 1] + width * height)
             level = level + 1
@@ -120,12 +117,14 @@ class Texture():  #image:[height,width,(channels)]  uv:[...,2]
         SAT = generate_SAT_fast(SAT)
         return jt.array(SAT[1:,1:]).float32()
 
+
 class Sampler():
     def __init__(self,sampler=sample2D):
         self.sampler=sampler
 
     def execute(self,image,uv):
         return self.sampler(image,uv)
+
 
 @numba.jit(nopython = True)
 def generate_SAT_fast(data):
